@@ -16,7 +16,6 @@ type StandAloneStorage struct {
 	cf_names	map[string]string
 	engine		engine_util.Engines // for storage
 	iterators	map[string]engine_util.BadgerIterator // iterator for scan cf
-	txn			badger.Txn // transition controller
 	isAvailable	bool
 }
 
@@ -31,7 +30,6 @@ func NewStandAloneStorage(conf *config.Config) *StandAloneStorage {
 			RaftPath: "",
 		},
 		iterators: map[string]engine_util.BadgerIterator{},
-		txn:       nil,
 		isAvailable: false,
 	}
 }
@@ -43,7 +41,6 @@ func (s *StandAloneStorage) Start() error {
 		return nil
 	}
 	s.isAvailable=true
-	s.txn=*s.engine.Kv.NewTransaction(true)
 	return nil
 }
 
@@ -54,19 +51,12 @@ func (s *StandAloneStorage) Stop() error {
 		return nil
 	}
 	s.isAvailable=false
-	s.txn.Discard()
-	err := s.engine.Close()
-	err = s.engine.Destroy()
-	if err != nil {
-		log.Error("Stop server failed because "+err.Error())
-		return err
-	}
 	return nil
 }
 
 func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader, error) {
 	// Your Code Here (1).
-	return &StandAloneReader{inner: s}, nil
+	return &StandAloneReader{inner: s,txn: s.engine.Kv.NewTransaction(true)}, nil
 }
 
 func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) error {
@@ -83,19 +73,24 @@ func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) 
 			break;
 		}
 	}
-	return nil
+	return wb.WriteToDB(s.engine.Kv)
 }
 
 type StandAloneReader struct {
-	inner		StandAloneStorage
+	inner		*StandAloneStorage
+	txn			*badger.Txn
 }
 
 func (r *StandAloneReader) GetCF(cf string, key []byte) ([]byte, error) {
-	return engine_util.GetCF(r.inner.engine.Kv, cf, key)
+	val, err := engine_util.GetCF(r.inner.engine.Kv, cf, key)
+	if err != nil {
+		return nil, nil
+	}
+	return val,err
 }
 
 func (r *StandAloneReader) IterCF(cf string) engine_util.DBIterator {
-	return engine_util.NewCFIterator(cf, r.inner.txn)
+	return engine_util.NewCFIterator(cf, r.txn)
 }
 
 func (r *StandAloneReader) Close() {
