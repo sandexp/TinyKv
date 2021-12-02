@@ -197,12 +197,21 @@ func newRaft(c *Config) *Raft {
 // current commit index to the given peer. Returns true if a message was sent.
 func (r *Raft) sendAppend(to uint64) bool {
 	// Your Code Here (2A).
-	return false
+	err := r.Step(pb.Message{To: to, MsgType: pb.MessageType_MsgAppend})
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // sendHeartbeat sends a heartbeat RPC to the given peer.
 func (r *Raft) sendHeartbeat(to uint64) {
 	// Your Code Here (2A).
+	err := r.Step(pb.Message{To: to, MsgType: pb.MessageType_MsgHeartbeat})
+	if err != nil {
+		log.Warn(err.Error())
+		return
+	}
 }
 
 // tick advances the internal logical clock by a single tick.
@@ -278,11 +287,20 @@ func (r *Raft) Step(m pb.Message) error {
 // handleAppendEntries handle AppendEntries RPC request
 func (r *Raft) handleAppendEntries(m pb.Message) {
 	// Your Code Here (2A).
+	//
+
+	// send response
+	r.Step(pb.Message{To: m.From,MsgType: pb.MessageType_MsgAppendResponse})
 }
 
 // handleHeartbeat handle Heartbeat RPC request
 func (r *Raft) handleHeartbeat(m pb.Message) {
 	// Your Code Here (2A).
+	/**
+		处理leader发送过来的心跳消息
+	*/
+	// send resp back to leader
+	r.Step(pb.Message{To: m.From,MsgType: pb.MessageType_MsgHeartbeatResponse})
 }
 
 // handleSnapshot handle Snapshot RPC request
